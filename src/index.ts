@@ -6,10 +6,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { ModelConfigEngine } from './engine.ts';
-import { RemoteSynchronizer } from './sync.ts';
-import { ModelRequestAdapter, type AgentModelRequest } from './adapter.ts';
-import type { BuiltinRulesData, ResolveQuery, ResolveResult, ModelConfig } from './types.ts';
+import { ModelConfigEngine } from './engine.js';
+import { RemoteSynchronizer } from './sync.js';
+import { ModelRequestAdapter, type AgentModelRequest } from './adapter.js';
+import type { BuiltinRulesData, ResolveQuery, ResolveResult, ModelConfig } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -185,7 +185,7 @@ export function apply(ctx: any, config: PluginConfig = {}) {
   return service;
 }
 
-export type * from './types.ts';
-export * from './engine.ts';
-export * from './sync.ts';
-export * from './adapter.ts';
+export type * from './types.js';
+export * from './engine.js';
+export * from './sync.js';
+export * from './adapter.js';

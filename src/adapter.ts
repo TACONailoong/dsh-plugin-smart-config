@@ -2,8 +2,8 @@
  * Adapter for integrating Smart Config with DeepSeek Harness Agent & Model Runner.
  */
 
-import { ModelConfigEngine } from './engine.ts';
-import type { ModelConfig, ResolveQuery, ResolveResult } from './types.ts';
+import { ModelConfigEngine } from './engine.js';
+import type { ModelConfig, ResolveQuery, ResolveResult } from './types.js';
 
 export interface AgentModelRequest {
   model: string;

@@ -5,7 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { BuiltinRulesData } from './types.ts';
+import type { BuiltinRulesData } from './types.js';
 
 export interface SyncOptions {
   endpointOrigin?: string;

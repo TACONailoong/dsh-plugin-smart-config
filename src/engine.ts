@@ -9,7 +9,7 @@ import type {
   ResolveResult,
   AnyRule,
   ExactModelRule,
-} from './types.ts';
+} from './types.js';
 
 export function normalizeBaseUrl(rawUrl?: string): string | undefined {
   if (!rawUrl) return undefined;
@@ -167,6 +167,10 @@ export class ModelConfigEngine {
           inherited = deepOverlay(inherited, rule.config);
           matchedRules.push(`template-model:${rule.templateId}/${rule.modelId}`);
         }
+        continue;
+      }
+
+      if (!('modelMatch' in rule)) {
         continue;
       }
 
