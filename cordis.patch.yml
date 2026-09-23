@@ -1,0 +1,5 @@
+# dsh-plugin-smart-config bundle patch
+# Mounts the smart-config plugin into the host composition of a dsh profile.
+- insert:
+    - id: smart-config
+      name: dsh-plugin-smart-config
