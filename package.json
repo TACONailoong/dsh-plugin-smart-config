@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-smart-config",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "DeepSeek Harness plugin for model smart configuration & capability adaptation, ported from ZCode",
   "type": "module",
   "main": "./dist/index.js",
