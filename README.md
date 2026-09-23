@@ -1,5 +1,9 @@
 # dsh-plugin-smart-config (DeepSeek Harness 智能配置插件)
 
+<p align="center">
+  <b><a href="./README_EN.md">English</a></b> | <b><a href="./README.md">简体中文</a></b>
+</p>
+
 本项目逆向并移植了 **ZCode** 的大模型“智能配置”（Follow Recommended Config / 推荐配置引擎），将其封装为适用于 **DeepSeek Harness (`dsh`)** 的标准 Cordis 插件。
 
 ---
