@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.cache/
+.npmrc
+*.tgz
+.DS_Store
+Thumbs.db
