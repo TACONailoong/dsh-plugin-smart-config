@@ -4,6 +4,14 @@
   <b><a href="./README_EN.md">English</a></b> | <b><a href="./README.md">简体中文</a></b>
 </p>
 
+<p align="center">
+  <a href="https://www.npmjs.com/package/dsh-plugin-smart-config"><img src="https://img.shields.io/npm/v/dsh-plugin-smart-config.svg?style=flat-square&color=CB3837&logo=npm" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/dsh-plugin-smart-config"><img src="https://img.shields.io/npm/dm/dsh-plugin-smart-config.svg?style=flat-square&color=blue&logo=npm" alt="npm monthly downloads" /></a>
+  <a href="https://www.npmjs.com/package/dsh-plugin-smart-config"><img src="https://img.shields.io/npm/dt/dsh-plugin-smart-config.svg?style=flat-square&color=2088FF&logo=npm" alt="npm total downloads" /></a>
+  <a href="https://github.com/TACONailoong/dsh-plugin-smart-config/releases"><img src="https://img.shields.io/github/v/release/TACONailoong/dsh-plugin-smart-config?style=flat-square&color=success&logo=github" alt="GitHub release" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/TACONailoong/dsh-plugin-smart-config?style=flat-square" alt="license" /></a>
+</p>
+
 本项目逆向并移植了 **ZCode** 的大模型“智能配置”（Follow Recommended Config / 推荐配置引擎），将其封装为适用于 **DeepSeek Harness (`dsh`)** 的标准 Cordis 插件。
 
 ---
@@ -56,7 +64,20 @@ dsh-plugin-smart-config/
 
 ## 🚀 快速上手
 
-### 1. 运行测试与演示 (Node.js 22+)
+### 1. 从 NPM 安装
+
+```bash
+# 使用 npm
+npm install dsh-plugin-smart-config
+
+# 使用 pnpm
+pnpm add dsh-plugin-smart-config
+
+# 使用 yarn
+yarn add dsh-plugin-smart-config
+```
+
+### 2. 运行测试与演示 (Node.js 22+)
 
 无需额外编译，直接借助 Node 运行测试：
 

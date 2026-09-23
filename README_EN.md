@@ -5,6 +5,14 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/dsh-plugin-smart-config"><img src="https://img.shields.io/npm/v/dsh-plugin-smart-config.svg?style=flat-square&color=CB3837&logo=npm" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/dsh-plugin-smart-config"><img src="https://img.shields.io/npm/dm/dsh-plugin-smart-config.svg?style=flat-square&color=blue&logo=npm" alt="npm monthly downloads" /></a>
+  <a href="https://www.npmjs.com/package/dsh-plugin-smart-config"><img src="https://img.shields.io/npm/dt/dsh-plugin-smart-config.svg?style=flat-square&color=2088FF&logo=npm" alt="npm total downloads" /></a>
+  <a href="https://github.com/TACONailoong/dsh-plugin-smart-config/releases"><img src="https://img.shields.io/github/v/release/TACONailoong/dsh-plugin-smart-config?style=flat-square&color=success&logo=github" alt="GitHub release" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/TACONailoong/dsh-plugin-smart-config?style=flat-square" alt="license" /></a>
+</p>
+
+<p align="center">
   <b>A smart model configuration & capability adaptation plugin for DeepSeek Harness (dsh), reverse-engineered and ported from ZCode.</b>
 </p>
 
@@ -62,7 +70,20 @@ dsh-plugin-smart-config/
 
 ## 🚀 Quick Start
 
-### 1. Run Tests & Demos (Node.js 22+)
+### 1. Installation via NPM
+
+```bash
+# Using npm
+npm install dsh-plugin-smart-config
+
+# Using pnpm
+pnpm add dsh-plugin-smart-config
+
+# Using yarn
+yarn add dsh-plugin-smart-config
+```
+
+### 2. Run Tests & Demos (Node.js 22+)
 
 Run directly with Node.js experimental TypeScript support without manual compilation:
 

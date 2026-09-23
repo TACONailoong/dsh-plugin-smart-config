@@ -19,8 +19,22 @@
     "smart-config",
     "model-adaptation"
   ],
-  "author": "Antigravity Agent",
+  "author": "TACONailoong",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TACONailoong/dsh-plugin-smart-config.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TACONailoong/dsh-plugin-smart-config/issues"
+  },
+  "homepage": "https://github.com/TACONailoong/dsh-plugin-smart-config#readme",
+  "files": [
+    "src",
+    "README.md",
+    "README_EN.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --experimental-strip-types test/test.ts",
     "demo": "node --experimental-strip-types test/demo.ts"
