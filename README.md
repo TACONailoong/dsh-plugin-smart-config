@@ -37,6 +37,14 @@
    - 内置完整 Revision 30 本地离线规则库（涵盖 20+ 模板、84+ 模型规则、72+ 协议规则、52+ 站点规则）；
    - 支持后台轮询服务端配置接口，通过租约机制无感拉取最新规则。
 
+5. **DSH 系统配置主动同步与思考强度自适应 (Active Settings Sync & Capabilities Adaptation)**：
+   - 自动检测并计算 `reasoningEfforts`（支持 `off`、`low`、`high`、`max` 多档思考强度），无缝点亮 Composer 输入框下方的思考强度调节器；
+   - 自动识别补齐 `contextWindow` (100万 Token)、`maxTokens`、多模态视觉能力 `input: ['text', 'image']`、以及 `thinkingFormat: "deepseek"` 方言兼容选项；
+   - 在 DSH 启动及运行过程中自动将能力写回系统配置 `ctx.settings`。
+
+6. **OpenCode 专属协议头自动增强 (OpenCode Request Header Enhancement)**：
+   - 全局拦截 `*.opencode.ai` 请求，自动携带 `User-Agent: opencode/1.0.0`、`x-opencode-client: opencode` 与 `x-opencode-session` 会话标识，保障 API 鉴权与调用合规。
+
 ---
 
 ## 📂 目录结构

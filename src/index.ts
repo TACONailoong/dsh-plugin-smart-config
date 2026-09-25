@@ -25,6 +25,90 @@ export interface PluginConfig {
   customRulesPath?: string;
 }
 
+export interface AdaptedModelCaps {
+  contextWindow: number;
+  maxTokens: number;
+  input: string[];
+  reasoningEfforts?: Record<string, string>;
+  compat: Record<string, any>;
+}
+
+/**
+ * Smart capability resolver that computes context window, max output tokens,
+ * input modalities, reasoning effort levels, and wire compat from smart config rules.
+ */
+export function resolveModelCapabilities(
+  engine: ModelConfigEngine,
+  modelId: string,
+  providerMeta?: { providerId?: string; apiType?: string; baseUrl?: string }
+): AdaptedModelCaps {
+  const result = engine.resolve({
+    modelId,
+    providerId: providerMeta?.providerId,
+    apiType: providerMeta?.apiType,
+    baseUrl: providerMeta?.baseUrl,
+  });
+
+  const props = result.effectiveConfig.properties || {};
+  const opts = result.effectiveConfig.optionSpecs || {};
+
+  // 1. Context window
+  const contextWindow = props.contextWindow ?? (modelId.includes('k3') ? 1048576 : 1000000);
+
+  // 2. Max output tokens
+  const maxTokens = opts.maxOutputTokens?.max ?? (modelId.includes('pro') || modelId.includes('flash') ? 384000 : 131072);
+
+  // 3. Input modalities
+  const input: string[] = ['text'];
+  if (props.inputFormat?.supportsImage || /flash|vision|k3|m3|plus|max/i.test(modelId)) {
+    input.push('image');
+  }
+
+  // 4. Reasoning effort levels
+  let reasoningEfforts: Record<string, string> | undefined;
+  const isReasoningModel = Boolean(
+    opts.reasoningLevel ||
+    /glm-5|deepseek|kimi-k3|r1|o1|o3|qwen.*max|doubao/i.test(modelId)
+  );
+
+  if (isReasoningModel) {
+    if (/kimi-k3/i.test(modelId)) {
+      reasoningEfforts = {
+        off: 'none',
+        max: 'max',
+      };
+    } else {
+      reasoningEfforts = {
+        off: 'none',
+        low: 'low',
+        high: 'high',
+        max: 'max',
+      };
+    }
+  }
+
+  // 5. Wire compatibility
+  const compat: Record<string, any> = {
+    supportsStore: false,
+    supportsDeveloperRole: false,
+    maxTokensField: 'max_tokens',
+  };
+
+  if (isReasoningModel) {
+    compat.supportsReasoningEffort = true;
+    compat.requiresReasoningContentOnAssistantMessages = true;
+    compat.thinkingFormat = 'deepseek';
+  }
+
+  return {
+    contextWindow,
+    maxTokens,
+    input,
+    reasoningEfforts,
+    compat,
+  };
+}
+
 export class SmartConfigService {
   public engine: ModelConfigEngine;
   public adapter: ModelRequestAdapter;
@@ -121,6 +205,7 @@ export class SmartConfigService {
  * DeepSeek Harness / Cordis Plugin Specification
  */
 export const name = 'dsh-plugin-smart-config';
+export const inject = ['settings'];
 
 export function apply(ctx: any, config: PluginConfig = {}) {
   const service = new SmartConfigService(config);
@@ -132,8 +217,188 @@ export function apply(ctx: any, config: PluginConfig = {}) {
     ctx.smartConfig = service;
   }
 
-  // Hook into DSH model execution cycle if event bus is available
+  // Intercept globalThis.fetch for OpenCode requests
+  if (typeof globalThis.fetch === 'function' && !(globalThis.fetch as any).__opencode_header_patched) {
+    const originalFetch = globalThis.fetch;
+    const defaultSessionId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'dsh-opencode-' + Math.random().toString(36).slice(2, 10);
+
+    const patchedFetch = async function (this: any, input: any, init?: any) {
+      let urlStr = '';
+      if (typeof input === 'string') {
+        urlStr = input;
+      } else if (input && typeof input.url === 'string') {
+        urlStr = input.url;
+      } else if (input && typeof input.href === 'string') {
+        urlStr = input.href;
+      } else if (input && typeof input.toString === 'function') {
+        urlStr = input.toString();
+      }
+
+      if (urlStr.includes('opencode.ai')) {
+        init = init || {};
+        let headers = init.headers;
+        if (!headers) {
+          headers = {};
+          init.headers = headers;
+        }
+
+        const setHeaderIfMissing = (key: string, value: string) => {
+          if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+            if (!headers.has(key)) headers.set(key, value);
+          } else if (Array.isArray(headers)) {
+            if (!headers.some(([k]) => k.toLowerCase() === key.toLowerCase())) {
+              headers.push([key, value]);
+            }
+          } else if (typeof headers === 'object' && headers !== null) {
+            const lowerKey = key.toLowerCase();
+            const found = Object.keys(headers).find(k => k.toLowerCase() === lowerKey);
+            if (!found) {
+              headers[key] = value;
+            }
+          }
+        };
+
+        setHeaderIfMissing('User-Agent', 'opencode/1.0.0');
+        setHeaderIfMissing('x-opencode-session', defaultSessionId);
+        setHeaderIfMissing('x-opencode-client', 'opencode');
+      }
+
+      return originalFetch.call(this, input, init);
+    };
+
+    (patchedFetch as any).__opencode_header_patched = true;
+    globalThis.fetch = patchedFetch;
+  }
+
+  // Active sync function to adapt all provider models in settings
+  const syncSettings = async () => {
+    try {
+      const settings = ctx.settings;
+      if (!settings || typeof settings.describe !== 'function') return;
+
+      const desc = settings.describe({ namespaces: ['llm-pi-ai'] })?.find((d: any) => d.ns === 'llm-pi-ai');
+      if (!desc || !desc.value) return;
+
+      const providers = desc.value.providers || {};
+      let changed = false;
+
+      // Default models to auto-inject if provider is empty
+      const defaultOpenCodeModels = [
+        { id: 'glm-5.3-flash', name: 'GLM-5.3 Flash' },
+        { id: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' },
+        { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash (Alias)' },
+        { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
+        { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro' },
+        { id: 'kimi-k3', name: 'Kimi K3' },
+        { id: 'qwen3.7-max', name: 'Qwen 3.7 Max' },
+        { id: 'minimax-m3', name: 'MiniMax M3' },
+      ];
+
+      for (const [providerId, provider] of Object.entries<any>(providers)) {
+        if (!provider || typeof provider !== 'object') continue;
+
+        const isOpenCode = providerId.includes('opencode') || (provider.baseURL && provider.baseURL.includes('opencode.ai'));
+        if (isOpenCode) {
+          if (!provider.headers) {
+            provider.headers = {};
+            changed = true;
+          }
+          if (!provider.headers['User-Agent']) {
+            provider.headers['User-Agent'] = 'opencode/1.0.0';
+            changed = true;
+          }
+          if (!provider.headers['x-opencode-client']) {
+            provider.headers['x-opencode-client'] = 'opencode';
+            changed = true;
+          }
+        }
+
+        if (!Array.isArray(provider.models) || provider.models.length === 0) {
+          if (isOpenCode) {
+            provider.models = structuredClone(defaultOpenCodeModels);
+            changed = true;
+          }
+        }
+
+        if (Array.isArray(provider.models)) {
+          for (let i = 0; i < provider.models.length; i++) {
+            let m = provider.models[i];
+            if (typeof m === 'string') {
+              m = { id: m };
+              provider.models[i] = m;
+              changed = true;
+            }
+            if (!m || typeof m !== 'object' || !m.id) continue;
+
+            const caps = resolveModelCapabilities(service.engine, m.id, {
+              providerId,
+              apiType: provider.api,
+              baseUrl: provider.baseURL,
+            });
+
+            if (!m.name) {
+              m.name = m.id;
+              changed = true;
+            }
+            if (m.contextWindow === undefined) {
+              m.contextWindow = caps.contextWindow;
+              changed = true;
+            }
+            if (m.maxTokens === undefined) {
+              m.maxTokens = caps.maxTokens;
+              changed = true;
+            }
+            if (!Array.isArray(m.input) || m.input.length === 0) {
+              m.input = caps.input;
+              changed = true;
+            }
+            if (m.reasoningEfforts === undefined && caps.reasoningEfforts) {
+              m.reasoningEfforts = caps.reasoningEfforts;
+              changed = true;
+            }
+            if (!m.compat) {
+              m.compat = caps.compat;
+              changed = true;
+            } else {
+              if (caps.compat.thinkingFormat && !m.compat.thinkingFormat) {
+                m.compat.thinkingFormat = caps.compat.thinkingFormat;
+                changed = true;
+              }
+              if (caps.compat.supportsReasoningEffort && m.compat.supportsReasoningEffort === undefined) {
+                m.compat.supportsReasoningEffort = true;
+                changed = true;
+              }
+              if (caps.compat.maxTokensField && !m.compat.maxTokensField) {
+                m.compat.maxTokensField = caps.compat.maxTokensField;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (changed && typeof settings.mutate === 'function') {
+        await settings.mutate(
+          'llm-pi-ai',
+          [{ op: 'set', path: ['providers'], value: providers }],
+          desc.revision
+        );
+        ctx.logger?.info?.('[smart-config] Model capabilities & thinking efforts successfully synced into settings.');
+      }
+    } catch (err: any) {
+      ctx.logger?.warn?.(`[smart-config] Settings sync warning: ${err?.message ?? String(err)}`);
+    }
+  };
+
+  // Run sync immediately on startup
+  syncSettings();
+
+  // Hook into DSH events if available
   if (typeof ctx.on === 'function') {
+    ctx.on('ready', () => {
+      syncSettings();
+    });
+
     ctx.on('model/before-call', (payload: any) => {
       if (!payload || !payload.request) return;
       const { preparedRequest, warnings } = service.prepareRequest(payload.request, {
@@ -146,7 +411,7 @@ export function apply(ctx: any, config: PluginConfig = {}) {
 
       payload.request = preparedRequest;
       if (warnings.length > 0 && ctx.logger?.warn) {
-        warnings.forEach((w) => ctx.logger.warn(`[smart-config] ${w}`));
+        warnings.forEach((w: string) => ctx.logger.warn(`[smart-config] ${w}`));
       }
     });
 

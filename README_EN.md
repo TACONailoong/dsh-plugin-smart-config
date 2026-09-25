@@ -42,6 +42,14 @@
    - Packaged with the complete official Revision 30 ruleset (20+ templates, 84+ models, 72+ API rules, 52+ site rules).
    - Optional background lease-locked synchronization with remote rule endpoints.
 
+5. **DSH Active Settings Sync & Thinking Effort Adaptation**:
+   - Automatically computes and maps `reasoningEfforts` (`off`, `low`, `high`, `max`), instantly lighting up the Thinking Effort selector in DSH Composer.
+   - Automatically resolves `contextWindow` (up to 1,000,000 tokens), `maxTokens`, multimodal vision `input: ['text', 'image']`, and `thinkingFormat: "deepseek"` wire compat.
+   - Actively writes back adapted capabilities into DSH runtime settings (`ctx.settings`).
+
+6. **OpenCode Request Header Enhancement**:
+   - Global interceptor for all `*.opencode.ai` requests, injecting compliant `User-Agent: opencode/1.0.0`, `x-opencode-client: opencode`, and `x-opencode-session: <UUID>` headers.
+
 ---
 
 ## 📂 Project Structure

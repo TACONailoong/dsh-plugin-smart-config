@@ -3,7 +3,7 @@
  * Usage: node --experimental-strip-types test/demo.ts [modelId] [apiType] [baseUrl]
  */
 
-import { SmartConfigService } from '../src/index.ts';
+import { SmartConfigService } from '../dist/index.js';
 
 const service = new SmartConfigService();
 

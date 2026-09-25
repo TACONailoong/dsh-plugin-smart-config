@@ -3,7 +3,7 @@
  */
 
 import assert from 'assert';
-import { SmartConfigService, apply } from '../src/index.ts';
+import { SmartConfigService, apply } from '../dist/index.js';
 
 console.log('--- [1] Initializing SmartConfigService ---');
 const service = new SmartConfigService();

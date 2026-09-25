@@ -11,6 +11,7 @@ export interface AgentModelRequest {
   tools?: any[];
   max_tokens?: number;
   reasoning_effort?: string;
+  headers?: Record<string, string>;
   [key: string]: any;
 }
 
@@ -93,6 +94,25 @@ export class ModelRequestAdapter {
     if (prepared.max_tokens === undefined && config.optionSpecs?.maxOutputTokens?.max) {
       // Don't arbitrarily force if model supports large output, but record recommended max
       // If user desires default limit, set it
+    }
+
+    // 5. OpenCode Request Headers Injection
+    const isOpencode = (options.baseUrl && options.baseUrl.includes('opencode')) ||
+                       (options.providerId && options.providerId.includes('opencode')) ||
+                       (req.model && req.model.toLowerCase().includes('opencode'));
+    if (isOpencode) {
+      if (!prepared.headers) {
+        prepared.headers = {};
+      }
+      if (!prepared.headers['User-Agent'] && !prepared.headers['user-agent']) {
+        prepared.headers['User-Agent'] = 'opencode/1.0.0';
+      }
+      if (!prepared.headers['x-opencode-session']) {
+        prepared.headers['x-opencode-session'] = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'opencode-session-' + Date.now();
+      }
+      if (!prepared.headers['x-opencode-client']) {
+        prepared.headers['x-opencode-client'] = 'opencode';
+      }
     }
 
     return {
