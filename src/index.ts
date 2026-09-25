@@ -53,26 +53,44 @@ export function resolveModelCapabilities(
   const opts = result.effectiveConfig.optionSpecs || {};
 
   // 1. Context window
-  const contextWindow = props.contextWindow ?? (modelId.includes('k3') ? 1048576 : 1000000);
+  let contextWindow = props.contextWindow;
+  if (!contextWindow || contextWindow === 200000) {
+    if (/k3/i.test(modelId)) {
+      contextWindow = 1048576;
+    } else if (/mimo|glm-5|deepseek|qwen.*max|minimax|flash|pro/i.test(modelId)) {
+      contextWindow = 1000000;
+    } else {
+      contextWindow = 200000;
+    }
+  }
 
   // 2. Max output tokens
-  const maxTokens = opts.maxOutputTokens?.max ?? (modelId.includes('pro') || modelId.includes('flash') ? 384000 : 131072);
+  let maxTokens = opts.maxOutputTokens?.max;
+  if (!maxTokens || maxTokens === 32000) {
+    if (/pro|flash|deepseek/i.test(modelId)) {
+      maxTokens = 384000;
+    } else if (/mimo|k3|m3/i.test(modelId)) {
+      maxTokens = 131072;
+    } else {
+      maxTokens = 65536;
+    }
+  }
 
   // 3. Input modalities
   const input: string[] = ['text'];
-  if (props.inputFormat?.supportsImage || /flash|vision|k3|m3|plus|max/i.test(modelId)) {
+  if (props.inputFormat?.supportsImage || /flash|vision|k3|m3|plus|max|mimo|vl/i.test(modelId)) {
     input.push('image');
   }
 
   // 4. Reasoning effort levels
   let reasoningEfforts: Record<string, string> | undefined;
   const isReasoningModel = Boolean(
-    opts.reasoningLevel ||
-    /glm-5|deepseek|kimi-k3|r1|o1|o3|qwen.*max|doubao/i.test(modelId)
+    /mimo|glm-5|deepseek|kimi|k3|r1|o1|o3|qwen.*max|doubao|reasoner|thinking/i.test(modelId) ||
+    (opts.reasoningLevel && Array.isArray(opts.reasoningLevel.values) && opts.reasoningLevel.values.length > 0 && opts.reasoningLevel.values.some((v: string) => v !== 'disabled'))
   );
 
   if (isReasoningModel) {
-    if (/kimi-k3/i.test(modelId)) {
+    if (/kimi-k3|k3/i.test(modelId)) {
       reasoningEfforts = {
         off: 'none',
         max: 'max',
@@ -81,6 +99,7 @@ export function resolveModelCapabilities(
       reasoningEfforts = {
         off: 'none',
         low: 'low',
+        medium: 'medium',
         high: 'high',
         max: 'max',
       };
@@ -299,7 +318,23 @@ export function apply(ctx: any, config: PluginConfig = {}) {
   }
 
   // Active sync function to adapt all provider models in settings
+  let isSyncing = false;
+  let lastSignature = '';
+
+  const getSignature = () => {
+    try {
+      const settings = optionalService(ctx, 'settings') ?? ctx.settings;
+      if (!settings || typeof settings.describe !== 'function') return '';
+      const desc = settings.describe({ namespaces: ['llm-pi-ai'] })?.find((d: any) => d.ns === 'llm-pi-ai');
+      return JSON.stringify(desc?.value?.providers ?? {});
+    } catch {
+      return '';
+    }
+  };
+
   const syncSettings = async () => {
+    if (isSyncing) return;
+    isSyncing = true;
     try {
       const settings = optionalService(ctx, 'settings') ?? ctx.settings;
       if (!settings || typeof settings.describe !== 'function') return;
@@ -371,19 +406,23 @@ export function apply(ctx: any, config: PluginConfig = {}) {
               m.name = m.id;
               changed = true;
             }
-            if (m.contextWindow === undefined) {
-              m.contextWindow = caps.contextWindow;
-              changed = true;
+            if (m.contextWindow === undefined || m.contextWindow === 200000 || (caps.contextWindow && caps.contextWindow > m.contextWindow)) {
+              if (caps.contextWindow !== m.contextWindow) {
+                m.contextWindow = caps.contextWindow;
+                changed = true;
+              }
             }
-            if (m.maxTokens === undefined) {
-              m.maxTokens = caps.maxTokens;
-              changed = true;
+            if (m.maxTokens === undefined || m.maxTokens === 32000 || (caps.maxTokens && caps.maxTokens > m.maxTokens)) {
+              if (caps.maxTokens !== m.maxTokens) {
+                m.maxTokens = caps.maxTokens;
+                changed = true;
+              }
             }
-            if (!Array.isArray(m.input) || m.input.length === 0) {
+            if (!Array.isArray(m.input) || m.input.length === 0 || (m.input.length === 1 && caps.input.length > 1)) {
               m.input = caps.input;
               changed = true;
             }
-            if (m.reasoningEfforts === undefined && caps.reasoningEfforts) {
+            if ((m.reasoningEfforts === undefined && caps.reasoningEfforts) || (caps.reasoningEfforts && (!m.reasoningEfforts?.max || !m.reasoningEfforts?.low))) {
               m.reasoningEfforts = caps.reasoningEfforts;
               changed = true;
             }
@@ -439,13 +478,26 @@ export function apply(ctx: any, config: PluginConfig = {}) {
     } catch (err: any) {
       console.warn(`[smart-config] Settings sync warning: ${err?.message ?? String(err)}`);
       diag(`Settings sync warning: ${err?.message ?? String(err)}`);
+    } finally {
+      isSyncing = false;
     }
   };
 
   // Run sync immediately on startup and after short delays to ensure settings service is ready
   syncSettings();
   const t1 = setTimeout(() => { void syncSettings(); }, 1500);
-  const t2 = setTimeout(() => { void syncSettings(); }, 5000);
+  const t2 = setTimeout(() => { void syncSettings(); }, 4000);
+
+  // Poll in-memory settings signature every 2.5s (zero I/O) so UI additions take effect immediately
+  const pollTimer = setInterval(() => {
+    try {
+      const sig = getSignature();
+      if (sig && sig !== lastSignature) {
+        lastSignature = sig;
+        void syncSettings();
+      }
+    } catch {}
+  }, 2500);
 
   // Hook into DSH events if available
   if (typeof ctx.on === 'function') {
@@ -473,6 +525,7 @@ export function apply(ctx: any, config: PluginConfig = {}) {
     ctx.on('dispose', () => {
       clearTimeout(t1);
       clearTimeout(t2);
+      clearInterval(pollTimer);
       service.dispose();
     });
   }

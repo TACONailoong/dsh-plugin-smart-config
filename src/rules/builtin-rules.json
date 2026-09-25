@@ -2637,22 +2637,28 @@
           }
         },
         {
-          "modelMatch": ".*mimo-v2\\.5(?:[.\\-:/\\[].*)?",
+          "modelMatch": ".*mimo.*",
           "config": {
             "properties": {
               "contextWindow": 1000000,
               "inputFormat": {
+                "supportsText": true,
                 "supportsImage": true,
                 "supportsVideo": true,
                 "supportsAudio": true
-              }
+              },
+              "supportsToolCall": true
             },
             "optionSpecs": {
               "reasoningLevel": {
                 "values": [
-                  "disabled",
-                  "enabled"
-                ]
+                  "off",
+                  "low",
+                  "medium",
+                  "high",
+                  "max"
+                ],
+                "map": "{\"reasoning_effort\": reasoningLevel}"
               },
               "maxOutputTokens": {
                 "max": 131072
@@ -3344,23 +3350,23 @@
           }
         },
         {
-          "modelMatch": ".*mimo-v2\\.5(?:[.\\-:/\\[].*)?",
+          "modelMatch": ".*mimo.*",
           "apiTypeMatch": "anthropic-messages",
           "config": {
             "optionSpecs": {
               "reasoningLevel": {
-                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"off\" ? \"disabled\" : \"enabled\"\n  }\n}"
               }
             }
           }
         },
         {
-          "modelMatch": ".*mimo-v2\\.5(?:[.\\-:/\\[].*)?",
+          "modelMatch": ".*mimo.*",
           "apiTypeMatch": "openai-chat-completions",
           "config": {
             "optionSpecs": {
               "reasoningLevel": {
-                "map": "{\n  \"thinking\": {\n    \"type\": reasoningLevel == \"enabled\" ? \"enabled\" : \"disabled\"\n  }\n}"
+                "map": "{\n  \"reasoning_effort\": reasoningLevel\n}"
               }
             }
           }
