@@ -207,15 +207,36 @@ export class SmartConfigService {
 export const name = 'dsh-plugin-smart-config';
 export const inject = ['settings'];
 
+function optionalService(ctx: any, name: string) {
+  try {
+    const getter = ctx.get;
+    if (typeof getter !== 'function') return undefined;
+    return getter.call(ctx, name);
+  } catch {
+    return undefined;
+  }
+}
+
+function diag(message: string) {
+  try {
+    const home = process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh';
+    fs.appendFileSync(`${home}/smart-config.log`, `${new Date().toISOString()} ${message}\n`);
+  } catch {
+    // ignore
+  }
+}
+
 export function apply(ctx: any, config: PluginConfig = {}) {
+  diag('apply() started');
   const service = new SmartConfigService(config);
 
-  // Register service in Cordis IoC container
-  if (typeof ctx.provide === 'function') {
-    ctx.provide('smartConfig', service);
-  } else {
-    ctx.smartConfig = service;
-  }
+  // Register service in Cordis IoC container safely
+  try {
+    if (typeof ctx.provide === 'function') {
+      ctx.provide('smartConfig', service);
+      diag('registered smartConfig in ctx');
+    }
+  } catch {}
 
   // Intercept globalThis.fetch for OpenCode requests
   if (typeof globalThis.fetch === 'function' && !(globalThis.fetch as any).__opencode_header_patched) {
@@ -273,7 +294,7 @@ export function apply(ctx: any, config: PluginConfig = {}) {
   // Active sync function to adapt all provider models in settings
   const syncSettings = async () => {
     try {
-      const settings = ctx.settings;
+      const settings = optionalService(ctx, 'settings') ?? ctx.settings;
       if (!settings || typeof settings.describe !== 'function') return;
 
       const desc = settings.describe({ namespaces: ['llm-pi-ai'] })?.find((d: any) => d.ns === 'llm-pi-ai');
@@ -383,19 +404,26 @@ export function apply(ctx: any, config: PluginConfig = {}) {
           [{ op: 'set', path: ['providers'], value: providers }],
           desc.revision
         );
-        ctx.logger?.info?.('[smart-config] Model capabilities & thinking efforts successfully synced into settings.');
+        console.log('[smart-config] Model capabilities & thinking efforts successfully synced into settings.');
+        diag('Model capabilities & thinking efforts successfully synced into settings.');
+      } else {
+        diag('Settings sync check finished, changed=' + changed);
       }
     } catch (err: any) {
-      ctx.logger?.warn?.(`[smart-config] Settings sync warning: ${err?.message ?? String(err)}`);
+      console.warn(`[smart-config] Settings sync warning: ${err?.message ?? String(err)}`);
+      diag(`Settings sync warning: ${err?.message ?? String(err)}`);
     }
   };
 
-  // Run sync immediately on startup
+  // Run sync immediately on startup and after short delays to ensure settings service is ready
   syncSettings();
+  const t1 = setTimeout(() => { void syncSettings(); }, 1500);
+  const t2 = setTimeout(() => { void syncSettings(); }, 5000);
 
   // Hook into DSH events if available
   if (typeof ctx.on === 'function') {
     ctx.on('ready', () => {
+      diag('ctx ready event received, running syncSettings');
       syncSettings();
     });
 
@@ -410,41 +438,16 @@ export function apply(ctx: any, config: PluginConfig = {}) {
       });
 
       payload.request = preparedRequest;
-      if (warnings.length > 0 && ctx.logger?.warn) {
-        warnings.forEach((w: string) => ctx.logger.warn(`[smart-config] ${w}`));
+      if (warnings.length > 0) {
+        warnings.forEach((w: string) => console.warn(`[smart-config] ${w}`));
       }
     });
 
     ctx.on('dispose', () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
       service.dispose();
     });
-  }
-
-  // Register CLI Command for DSH if command system is available
-  if (ctx.command) {
-    ctx
-      .command('smart-config <modelId:string>', 'Inspect smart configuration for a model')
-      .option('api', '-a <apiType:string> API protocol type (e.g. openai-chat-completions, anthropic-messages)')
-      .option('url', '-u <baseUrl:string> Provider Base URL')
-      .action(({ options }: any, modelId: string) => {
-        if (!modelId) return 'Please specify a model ID.';
-        const result = service.resolve({
-          modelId,
-          apiType: options?.api,
-          baseUrl: options?.url,
-        });
-
-        return (
-          `=== Smart Config for [${result.modelId}] ===\n` +
-          `- Use Recommended: ${result.useRecommendedConfig}\n` +
-          `- Context Window: ${result.effectiveConfig.properties?.contextWindow?.toLocaleString() ?? 'Unknown'}\n` +
-          `- Max Output Tokens: ${result.effectiveConfig.optionSpecs?.maxOutputTokens?.max?.toLocaleString() ?? 'Default'}\n` +
-          `- Tool Calling: ${result.effectiveConfig.properties?.supportsToolCall ? 'Supported' : 'No'}\n` +
-          `- Vision/Image: ${result.effectiveConfig.properties?.inputFormat?.supportsImage ? 'Supported' : 'No'}\n` +
-          `- Matched Rules (${result.matchedRules.length}):\n` +
-          result.matchedRules.map((r) => `  * ${r}`).join('\n')
-        );
-      });
   }
 
   return service;
