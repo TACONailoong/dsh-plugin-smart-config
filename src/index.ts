@@ -217,10 +217,17 @@ function optionalService(ctx: any, name: string) {
   }
 }
 
+function getDshHome(): string {
+  if (process.env.DSH_HOME) return process.env.DSH_HOME;
+  const userProfile = process.env.USERPROFILE || process.env.HOME;
+  if (userProfile) return path.join(userProfile, '.dsh');
+  return '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh';
+}
+
 function diag(message: string) {
   try {
-    const home = process.env.DSH_HOME ?? '/data/user/0/com.dsharnessmobile.shell/files/home/.dsh';
-    fs.appendFileSync(`${home}/smart-config.log`, `${new Date().toISOString()} ${message}\n`);
+    const home = getDshHome();
+    fs.appendFileSync(path.join(home, 'smart-config.log'), `${new Date().toISOString()} ${message}\n`);
   } catch {
     // ignore
   }
@@ -300,7 +307,10 @@ export function apply(ctx: any, config: PluginConfig = {}) {
       const desc = settings.describe({ namespaces: ['llm-pi-ai'] })?.find((d: any) => d.ns === 'llm-pi-ai');
       if (!desc || !desc.value) return;
 
-      const providers = desc.value.providers || {};
+      const rawProviders = desc.value.providers || {};
+      const providers = typeof structuredClone === 'function'
+        ? structuredClone(rawProviders)
+        : JSON.parse(JSON.stringify(rawProviders));
       let changed = false;
 
       // Default models to auto-inject if provider is empty
@@ -399,13 +409,30 @@ export function apply(ctx: any, config: PluginConfig = {}) {
       }
 
       if (changed && typeof settings.mutate === 'function') {
-        await settings.mutate(
-          'llm-pi-ai',
-          [{ op: 'set', path: ['providers'], value: providers }],
-          desc.revision
-        );
-        console.log('[smart-config] Model capabilities & thinking efforts successfully synced into settings.');
-        diag('Model capabilities & thinking efforts successfully synced into settings.');
+        try {
+          await settings.mutate(
+            'llm-pi-ai',
+            [{ op: 'set', path: ['providers'], value: providers }],
+            desc.revision
+          );
+          console.log('[smart-config] Model capabilities & thinking efforts successfully synced into settings.');
+          diag('Model capabilities & thinking efforts successfully synced into settings.');
+        } catch (mutErr: any) {
+          if (mutErr?.code === 'SETTINGS_CONFLICT') {
+            const freshDesc = settings.describe({ namespaces: ['llm-pi-ai'] })?.find((d: any) => d.ns === 'llm-pi-ai');
+            if (freshDesc) {
+              await settings.mutate(
+                'llm-pi-ai',
+                [{ op: 'set', path: ['providers'], value: providers }],
+                freshDesc.revision
+              );
+              console.log('[smart-config] Model capabilities & thinking efforts synced after conflict retry.');
+              diag('Model capabilities & thinking efforts synced after conflict retry.');
+            }
+          } else {
+            throw mutErr;
+          }
+        }
       } else {
         diag('Settings sync check finished, changed=' + changed);
       }
