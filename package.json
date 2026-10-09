@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-smart-config",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "DeepSeek Harness plugin for model smart configuration & capability adaptation, ported from ZCode",
   "type": "module",
   "main": "./dist/index.js",
@@ -46,7 +46,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npx --package typescript tsc -p tsconfig.json",
+    "build": "npx --package typescript tsc -p tsconfig.json && node scripts/copy-rules.mjs",
     "prepare": "npm run build",
     "test": "npm run build && node --experimental-strip-types test/test.ts",
     "demo": "npm run build && node --experimental-strip-types test/demo.ts"

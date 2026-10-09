@@ -122,13 +122,19 @@ export class SmartConfigService {
     const cached = this.synchronizer?.loadCached();
     if (cached) return cached;
 
-    // 3. Fallback to bundled builtin rules
-    const builtinPath = path.resolve(__dirname, 'rules', 'builtin-rules.json');
-    if (fs.existsSync(builtinPath)) {
+    // 3. Fallback to bundled builtin rules. tsc does not copy JSON, so the
+    // build also places a copy in dist/rules, and a source checkout can be
+    // read from src/rules when that copy is absent.
+    const builtinCandidates = [
+      path.resolve(__dirname, 'rules', 'builtin-rules.json'),
+      path.resolve(__dirname, '../src/rules/builtin-rules.json'),
+    ];
+    for (const builtinPath of builtinCandidates) {
+      if (!fs.existsSync(builtinPath)) continue;
       try {
         return JSON.parse(fs.readFileSync(builtinPath, 'utf8'));
       } catch (err) {
-        console.error(`[smart-config] Failed to load bundled rules:`, err);
+        console.error(`[smart-config] Failed to load bundled rules from ${builtinPath}:`, err);
       }
     }
 
