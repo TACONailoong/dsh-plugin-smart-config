@@ -4,8 +4,17 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import type { BuiltinRulesData } from './types.js';
+
+function defaultCacheDir(): string {
+  const home = process.env.DSH_HOME
+    || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.dsh') : undefined)
+    || (process.env.HOME ? path.join(process.env.HOME, '.dsh') : undefined)
+    || path.join(os.homedir(), '.dsh');
+  return path.join(home, 'cache', 'dsh-plugin-smart-config');
+}
 
 export interface SyncOptions {
   endpointOrigin?: string;
@@ -26,7 +35,7 @@ export class RemoteSynchronizer {
 
   constructor(options: SyncOptions = {}) {
     this.endpointOrigin = options.endpointOrigin;
-    this.cacheDir = options.cacheDir || path.resolve(process.cwd(), '.cache', 'model-rules');
+    this.cacheDir = options.cacheDir || defaultCacheDir();
     this.refreshIntervalMs = options.refreshIntervalMs || 3600 * 1000;
     this.appVersion = options.appVersion || '1.0.0';
     this.platform = options.platform || process.platform;

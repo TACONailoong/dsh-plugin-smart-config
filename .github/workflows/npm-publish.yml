@@ -18,8 +18,8 @@ jobs:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Run Test Suite
-        run: node --experimental-strip-types test/test.ts
+      - name: Install and test
+        run: npm install && npm test
 
       - name: Publish to NPM
         run: npm publish --access public

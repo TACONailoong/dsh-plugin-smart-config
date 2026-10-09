@@ -37,13 +37,17 @@
    - 内置完整 Revision 30 本地离线规则库（涵盖 20+ 模板、84+ 模型规则、72+ 协议规则、52+ 站点规则）；
    - 支持后台轮询服务端配置接口，通过租约机制无感拉取最新规则。
 
-5. **DSH 系统配置主动同步与思考强度自适应 (Active Settings Sync & Capabilities Adaptation)**：
-   - 自动检测并计算 `reasoningEfforts`（支持 `off`、`low`、`high`、`max` 多档思考强度），无缝点亮 Composer 输入框下方的思考强度调节器；
-   - 自动识别补齐 `contextWindow` (100万 Token)、`maxTokens`、多模态视觉能力 `input: ['text', 'image']`、以及 `thinkingFormat: "deepseek"` 方言兼容选项；
-   - 在 DSH 启动及运行过程中自动将能力写回系统配置 `ctx.settings`。
+5. **按 dsh 0.2.0-rc.2 写回模型档案**：
+   - 只补 `llm-pi-ai` 里已经列出的模型，用字段级 `settings.mutate` 填上还没有的 `contextWindow`、`input` 和 `reasoningEfforts`。
+   - 不写 `maxTokens`。在 0.2.0-rc.2 里，这个字段会变成该模型每次请求的默认输出上限。
+   - `models` 省略或为空时保持不动，继续用安装包里的 pi-ai 模型目录，不再塞入一份写死的模型列表。
+   - 宿主上的 `openai-completions` 会先映射成规则库里的 `openai-chat-completions`，OpenCode 站点规则才能对上。
+   - 思考档位只用 0.2 接受的 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。`thinkingFormat` 跟着规则的请求映射走：`reasoning_effort` 写成 `openai`，`enable_thinking` 写成 `deepseek`。
+   - 已经有值的字段保持原样，包括你改过的和目录里自带的。
 
-6. **OpenCode 专属协议头自动增强 (OpenCode Request Header Enhancement)**：
-   - 全局拦截 `*.opencode.ai` 请求，自动携带 `User-Agent: opencode/1.0.0`、`x-opencode-client: opencode` 与 `x-opencode-session` 会话标识，保障 API 鉴权与调用合规。
+6. **OpenCode 请求头**：
+   - 写在对应 provider 的 `headers` 上：`User-Agent: opencode/1.0.0`、`x-opencode-client: opencode`。
+   - 不再改 `globalThis.fetch`。会话头留给专门的会话插件。
 
 ---
 
@@ -59,7 +63,8 @@ dsh-plugin-smart-config/
 │   ├── types.ts               # 核心类型声明 (ModelConfig, Rule, OptionSpecs 等)
 │   ├── engine.ts              # 逆向提取的核心 5 层级联算法与 Overlay 合并器
 │   ├── sync.ts                # 远端规则热更新同步器 (带本地缓存与并发控制)
-│   ├── adapter.ts             # Agent 模型调用拦截器与请求参数转译器
+│   ├── adapter.ts             # 编程式请求参数转译（不改 dsh 运行中的冻结请求）
+│   ├── profile-sync.ts        # 把规则映射成 dsh 0.2.0-rc.2 的 llm-pi-ai 字段补丁
 │   └── rules/
 │       └── builtin-rules.json # 完整的出厂内置规则库 (从 ZCode 逆向提取)
 └── test/
@@ -86,42 +91,29 @@ yarn add dsh-plugin-smart-config
 
 ### 2. 运行测试与演示 (Node.js 22+)
 
-无需额外编译，直接借助 Node 运行测试：
+```bash
+npm test
+npm run demo
+npm run demo -- glm-5.3-flash openai-chat-completions https://opencode.ai/zen/go/v1
+```
+
+### 3. 装进 DeepSeek Harness 0.2.0-rc.2
+
+插件声明 `peerDependencies["@deepseek-ai/dsh"] = ">=0.2.0-rc.2 <0.2.1-0"`。`0.2.0-rc.2` 可以通过安装检查，`0.2.1-alpha` 不会被当成同一条线。
 
 ```bash
-# 运行完整自动化测试
-node --experimental-strip-types test/test.ts
-
-# 运行各模型适配能力演示
-node --experimental-strip-types test/demo.ts
-
-# 查询指定模型与供应商推荐
-node --experimental-strip-types test/demo.ts glm-5.3-flash openai-chat-completions https://opencode.ai/zen/go/v1
+dsh plugin --profile web add dsh-plugin-smart-config
 ```
 
-### 2. 在 DeepSeek Harness (`dsh`) 中作为插件载入
+本地目录用 link：
 
-通过 Cordis 容器挂载插件：
-
-```typescript
-import { Context } from 'cordis'; // 或 @deepseek-ai/dsh
-import * as SmartConfigPlugin from 'dsh-plugin-smart-config';
-
-const ctx = new Context();
-
-// 注册智能配置插件
-ctx.plugin(SmartConfigPlugin, {
-  endpointOrigin: 'https://your-rule-cdn.com', // 可选：指定自定义云端规则端点
-  autoSync: true,                              // 是否开启后台增量更新
-});
-
-// 在 Agent 运行生命周期中，插件会自动注册 'model/before-call' 钩子：
-// 1. 自动根据模型匹配上下文窗口
-// 2. 自动转换 reasoning_effort 参数
-// 3. 校验并拦截不支持的工具调用
+```bash
+dsh plugin --profile web add "link:D:/path/to/dsh-plugin-smart-config"
 ```
 
-### 3. 编程式 API 调用
+装好后它作为 bundle 挂上 `cordis.patch.yml` 里的 `smart-config`。dsh 0.2 的 Agent 请求是冻结的，插件不改请求体；它把能力写进 `llm-pi-ai` 的 provider 档案，由 pi-ai 适配器在发请求前读取。模型需要先出现在该 provider 的 `models` 列表里。列表空着时，用的是 pi-ai 自带目录。
+
+### 4. 编程式 API 调用
 
 也可以在任意 Node/TS 项目中作为独立服务使用：
 

@@ -42,13 +42,17 @@
    - Packaged with the complete official Revision 30 ruleset (20+ templates, 84+ models, 72+ API rules, 52+ site rules).
    - Optional background lease-locked synchronization with remote rule endpoints.
 
-5. **DSH Active Settings Sync & Thinking Effort Adaptation**:
-   - Automatically computes and maps `reasoningEfforts` (`off`, `low`, `high`, `max`), instantly lighting up the Thinking Effort selector in DSH Composer.
-   - Automatically resolves `contextWindow` (up to 1,000,000 tokens), `maxTokens`, multimodal vision `input: ['text', 'image']`, and `thinkingFormat: "deepseek"` wire compat.
-   - Actively writes back adapted capabilities into DSH runtime settings (`ctx.settings`).
+5. **Profile sync for dsh 0.2.0-rc.2**:
+   - Fills missing `contextWindow`, `input`, and `reasoningEfforts` on models already listed under the `llm-pi-ai` entry, using field-level `settings.mutate`.
+   - Does not write `maxTokens`. On 0.2.0-rc.2 that field becomes the model's per-request output default.
+   - Leaves an omitted or empty `models` list alone, so the installed pi-ai catalog keeps serving.
+   - Maps the host protocol `openai-completions` to the rule file's `openai-chat-completions` before matching OpenCode site rules.
+   - Uses only the thinking levels 0.2 accepts: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `thinkingFormat` follows the rule's request map: `openai` for `reasoning_effort`, `deepseek` for `enable_thinking`.
+   - Leaves fields that already have a value, including ones you set and ones that came from the catalog.
 
-6. **OpenCode Request Header Enhancement**:
-   - Global interceptor for all `*.opencode.ai` requests, injecting compliant `User-Agent: opencode/1.0.0`, `x-opencode-client: opencode`, and `x-opencode-session: <UUID>` headers.
+6. **OpenCode request headers**:
+   - Writes `User-Agent: opencode/1.0.0` and `x-opencode-client: opencode` onto that provider's `headers`.
+   - Does not patch `globalThis.fetch`. Session headers stay with a session plugin.
 
 ---
 
@@ -65,7 +69,8 @@ dsh-plugin-smart-config/
 │   ├── types.ts               # Complete TypeScript interface definitions
 │   ├── engine.ts              # Core 5-layer cascading matching and overlay engine
 │   ├── sync.ts                # Remote rule hot-sync manager with local caching
-│   ├── adapter.ts             # Agent model call interceptor & payload mapper
+│   ├── adapter.ts             # Programmatic request mapping; does not edit frozen dsh requests
+│   ├── profile-sync.ts        # Rule results as dsh 0.2.0-rc.2 llm-pi-ai field edits
 │   └── rules/
 │       └── builtin-rules.json # Built-in rule database (Revision 30 from ZCode)
 └── test/
@@ -92,42 +97,29 @@ yarn add dsh-plugin-smart-config
 
 ### 2. Run Tests & Demos (Node.js 22+)
 
-Run directly with Node.js experimental TypeScript support without manual compilation:
+```bash
+npm test
+npm run demo
+npm run demo -- glm-5.3-flash openai-chat-completions https://opencode.ai/zen/go/v1
+```
+
+### 3. Install into DeepSeek Harness 0.2.0-rc.2
+
+The package peers `@deepseek-ai/dsh` at `>=0.2.0-rc.2 <0.2.1-0`. That passes the installer on `0.2.0-rc.2` and does not treat `0.2.1-alpha` as the same line.
 
 ```bash
-# Run automated tests
-node --experimental-strip-types test/test.ts
-
-# Run multi-model adaptation showcase
-node --experimental-strip-types test/demo.ts
-
-# Query smart config for a specific model & provider
-node --experimental-strip-types test/demo.ts glm-5.3-flash openai-chat-completions https://opencode.ai/zen/go/v1
+dsh plugin --profile web add dsh-plugin-smart-config
 ```
 
-### 2. Integration in DeepSeek Harness (`dsh`)
+Link a local checkout with:
 
-Mount the plugin inside your Cordis container:
-
-```typescript
-import { Context } from 'cordis'; // or @deepseek-ai/dsh
-import * as SmartConfigPlugin from 'dsh-plugin-smart-config';
-
-const ctx = new Context();
-
-// Register plugin
-ctx.plugin(SmartConfigPlugin, {
-  endpointOrigin: 'https://your-rule-cdn.com', // Optional: remote rule CDN
-  autoSync: true,                              // Optional: enable background updates
-});
-
-// The plugin automatically hooks into the 'model/before-call' lifecycle:
-// 1. Matches and clamps context window & token limits
-// 2. Formats reasoning_effort payloads for DeepSeek, Claude, and OpenAI
-// 3. Guards against unsupported tool calling & vision inputs
+```bash
+dsh plugin --profile web add "link:/path/to/dsh-plugin-smart-config"
 ```
 
-### 3. Programmatic API Usage
+The bundle inserts a `smart-config` row. dsh 0.2 freezes agent-loop requests, so the plugin does not edit them. It writes capabilities onto the `llm-pi-ai` provider profile, and the pi-ai adapter reads that profile before sending. A model has to be listed on that provider first. An empty list keeps the installed pi-ai catalog.
+
+### 4. Programmatic API Usage
 
 Use directly in any Node.js / TypeScript application:
 

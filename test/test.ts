@@ -3,7 +3,7 @@
  */
 
 import assert from 'assert';
-import { SmartConfigService, apply } from '../dist/index.js';
+import { SmartConfigService, apply, planLlmPiAiOps, ruleApiType } from '../dist/index.js';
 
 console.log('--- [1] Initializing SmartConfigService ---');
 const service = new SmartConfigService();
@@ -84,9 +84,25 @@ assert.strictEqual(adapted.preparedRequest.reasoning_effort, 'high');
 assert.strictEqual(adapted.preparedRequest.max_tokens, 4096);
 
 console.log('\n--- [6] Testing DeepSeek Harness Cordis Plugin apply() Lifecycle ---');
+const providers = {
+  opencode: {
+    api: 'openai-completions',
+    baseURL: 'https://opencode.ai/zen/go/v1',
+    models: [{ id: 'glm-5.3-flash', contextWindow: 64000 }],
+  },
+};
+let mutated: { ns: string; ops: any[]; revision: number } | undefined;
 const fakeCtx: any = {
   registeredEvents: {} as Record<string, Function>,
   services: {} as Record<string, any>,
+  settings: {
+    describe() {
+      return [{ ns: 'llm-pi-ai', revision: 3, value: { providers } }];
+    },
+    async mutate(ns: string, ops: any[], revision: number) {
+      mutated = { ns, ops, revision };
+    },
+  },
   provide(name: string, svc: any) {
     this.services[name] = svc;
   },
@@ -95,22 +111,87 @@ const fakeCtx: any = {
   },
 };
 
-apply(fakeCtx);
+const started = apply(fakeCtx);
 assert.ok(fakeCtx.services.smartConfig, 'smartConfig service should be registered in Cordis ctx');
-assert.ok(fakeCtx.registeredEvents['model/before-call'], 'model/before-call hook should be registered');
+assert.equal(fakeCtx.registeredEvents['model/before-call'], undefined);
+await new Promise((resolve) => setTimeout(resolve, 30));
+assert.equal(mutated?.ns, 'llm-pi-ai');
+assert.equal(mutated?.revision, 3);
+assert.ok(mutated!.ops.some((op) => op.path.join('.') === 'providers.opencode.headers'));
+assert.ok(!mutated!.ops.some((op) => op.path.at(-1) === 'contextWindow'), 'an existing context window stays put');
+assert.ok(!mutated!.ops.some((op) => op.path.at(-1) === 'maxTokens'));
+fakeCtx.registeredEvents.dispose?.();
+started.dispose();
 
-// Test triggering hook
-const hookPayload = {
-  request: {
-    model: 'glm-5.3-flash',
-    messages: [{ role: 'user', content: 'test' }],
-    reasoning_effort: 'high',
+console.log('\n--- [7] Testing dsh 0.2.0-rc.2 profile planning ---');
+assert.strictEqual(ruleApiType('openai-completions'), 'openai-chat-completions');
+assert.strictEqual(ruleApiType('openai-responses'), 'openai-responses');
+
+const planned = planLlmPiAiOps(service.engine, {
+  opencode: {
+    api: 'openai-completions',
+    baseURL: 'https://opencode.ai/zen/go/v1',
+    models: [
+      { id: 'glm-5.3-flash', input: ['text'] },
+      { id: 'deepseek-v4-flash' },
+      'kimi-k3',
+    ],
   },
-  apiType: 'openai-chat-completions',
-  baseUrl: 'https://opencode.ai/zen/go/v1',
-};
-fakeCtx.registeredEvents['model/before-call'](hookPayload);
-console.log('Hook executed successfully, payload transformed:');
-console.log(JSON.stringify(hookPayload.request, null, 2));
+  anthropic: {
+    api: 'anthropic-messages',
+    baseURL: 'https://api.anthropic.com/v1',
+    models: [{ id: 'claude-3-5-sonnet-20241022' }],
+  },
+  catalog: {
+    baseURL: 'https://api.example.com/v1',
+  },
+});
+
+const paths = planned.map((op) => op.path.join('.'));
+console.log(paths.join('\n'));
+
+assert.ok(paths.includes('providers.opencode.headers'));
+assert.ok(paths.includes('providers.opencode.models.0.contextWindow'));
+assert.ok(paths.includes('providers.opencode.models.0.input'));
+assert.ok(paths.includes('providers.opencode.models.0.reasoningEfforts'));
+assert.ok(paths.includes('providers.opencode.models.0.compat.thinkingFormat'));
+assert.strictEqual(planned.find((op) => op.path.join('.') === 'providers.opencode.models.0.contextWindow')?.value, 1000000);
+assert.deepStrictEqual(planned.find((op) => op.path.join('.') === 'providers.opencode.models.0.input')?.value, ['text', 'image']);
+assert.deepStrictEqual(planned.find((op) => op.path.join('.') === 'providers.opencode.models.0.reasoningEfforts')?.value, {
+  off: null,
+  low: 'low',
+  high: 'high',
+  max: 'max',
+});
+assert.strictEqual(planned.find((op) => op.path.join('.') === 'providers.opencode.models.0.compat.thinkingFormat')?.value, 'openai');
+assert.strictEqual(planned.find((op) => op.path.join('.') === 'providers.opencode.models.1.compat.thinkingFormat')?.value, 'openai');
+assert.ok(!paths.some((path) => path.endsWith('maxTokens')));
+assert.ok(!paths.some((path) => path.startsWith('providers.anthropic') && path.includes('thinkingFormat')));
+assert.ok(!paths.some((path) => path.startsWith('providers.catalog')));
+
+const applied = structuredClone({
+  opencode: {
+    api: 'openai-completions',
+    baseURL: 'https://opencode.ai/zen/go/v1',
+    models: [
+      { id: 'glm-5.3-flash', input: ['text'] },
+      { id: 'deepseek-v4-flash' },
+      'kimi-k3',
+    ],
+  },
+}) as any;
+for (const op of planned.filter((item) => item.path[1] === 'opencode')) {
+  let node = applied;
+  for (let i = 0; i < op.path.length - 1; i++) {
+    const key = op.path[i] === 'providers' ? undefined : op.path[i];
+    if (key === undefined) continue;
+    const next = op.path[i + 1];
+    if (node[key] == null) node[key] = /^\d+$/.test(next) ? [] : {};
+    node = node[key];
+  }
+  node[op.path.at(-1)!] = op.value;
+}
+const again = planLlmPiAiOps(service.engine, { opencode: applied.opencode });
+assert.deepStrictEqual(again, [], 'a second pass must not rewrite fields that were just filled');
 
 console.log('\n✅ ALL TESTS PASSED SUCCESSFULLY!');
