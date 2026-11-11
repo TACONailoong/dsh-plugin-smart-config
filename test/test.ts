@@ -3,13 +3,15 @@
  */
 
 import assert from 'assert';
-import { SmartConfigService, apply, planLlmPiAiOps, ruleApiType } from '../dist/index.js';
+import fs from 'fs';
+import semver from 'semver';
+import { SmartConfigService, apply, planLlmPiAiOps, ruleApiType, wireCompat } from '../dist/index.js';
 
 console.log('--- [1] Initializing SmartConfigService ---');
 const service = new SmartConfigService();
 const engine = service.engine;
 console.log(`Loaded rules revision: ${engine.getRevision()}`);
-assert(engine.getRevision() > 0, 'Revision should be greater than 0');
+assert.strictEqual(engine.getRevision(), 43);
 
 console.log('\n--- [2] Testing Model Matching: GLM-5.3-Flash on OpenCode Go ---');
 const glmResult = service.resolve({
@@ -123,7 +125,26 @@ assert.ok(!mutated!.ops.some((op) => op.path.at(-1) === 'maxTokens'));
 fakeCtx.registeredEvents.dispose?.();
 started.dispose();
 
-console.log('\n--- [7] Testing dsh 0.2.0-rc.2 profile planning ---');
+console.log('\n--- [7] Testing dsh 0.2.2-rc.1 profile planning ---');
+const manifest = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  peerDependencies: { '@deepseek-ai/dsh': string };
+};
+const dshRange = manifest.peerDependencies['@deepseek-ai/dsh'];
+assert.strictEqual(dshRange, '>=0.2.0-rc.2 <0.2.3-0');
+const accepts = ['0.2.0-rc.2', '0.2.0', '0.2.1-rc.5', '0.2.1', '0.2.2-alpha.3', '0.2.2-rc.1', '0.2.2'];
+const rejects = ['0.2.0-rc.1', '0.1.7-rc.2', '0.2.3-alpha.1', '0.2.3'];
+for (const version of accepts) {
+  assert.strictEqual(semver.satisfies(version, dshRange, { includePrerelease: true }), true, version);
+}
+for (const version of rejects) {
+  assert.strictEqual(semver.satisfies(version, dshRange, { includePrerelease: true }), false, version);
+}
+assert.strictEqual(wireCompat('{"reasoning_effort": reasoningLevel}')?.thinkingFormat, 'openai');
+assert.strictEqual(wireCompat('{"enable_thinking": reasoningLevel == "enabled"}')?.thinkingFormat, 'qwen');
+assert.strictEqual(wireCompat('{ "thinking": { "type": "enabled" } }')?.thinkingFormat, 'zai');
+assert.strictEqual(wireCompat('{ "thinking": { "type": "enabled" }, "enable_thinking": true }')?.thinkingFormat, 'deepseek');
+assert.strictEqual(wireCompat('{ "reasoning": { "effort": reasoningLevel } }')?.thinkingFormat, 'openrouter');
+assert.strictEqual(wireCompat('{ "output_config": { "effort": reasoningLevel } }'), undefined);
 assert.strictEqual(ruleApiType('openai-completions'), 'openai-chat-completions');
 assert.strictEqual(ruleApiType('openai-responses'), 'openai-responses');
 

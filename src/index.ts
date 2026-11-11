@@ -70,7 +70,7 @@ export function resolveModelCapabilities(
   };
   const wire = wireCompat(opts.reasoningLevel?.map);
   if (wire) Object.assign(compat, wire);
-  else if (reasoningEfforts && (apiType == null || apiType === 'openai-chat-completions')) {
+  else if (!opts.reasoningLevel?.map && reasoningEfforts && (apiType == null || apiType === 'openai-chat-completions')) {
     compat.supportsReasoningEffort = true;
     compat.thinkingFormat = 'openai';
   }
@@ -321,4 +321,4 @@ export * from './engine.js';
 export * from './sync.js';
 export * from './adapter.js';
 export { LLM_PI_AI_ENTRY_ID, planLlmPiAiOps, reasoningEffortsFor, ruleApiType, wireCompat } from './profile-sync.js';
-export type { SettingsPathOp, WireCompat } from './profile-sync.js';
+export type { SettingsPathOp, ThinkingFormat, WireCompat } from './profile-sync.js';

@@ -39,15 +39,15 @@
      - **OpenCode / Kimi**: `{ "reasoning_effort": reasoningLevel }`
 
 4. **Offline High Availability + Dynamic Hot-Sync**:
-   - Packaged with the complete official Revision 30 ruleset (20+ templates, 84+ models, 72+ API rules, 52+ site rules).
+   - Packaged with the ZCode 3.17.2 Revision 43 ruleset (34 provider templates, 83 model rules, 73 protocol rules, 58 site rules).
    - Optional background lease-locked synchronization with remote rule endpoints.
 
-5. **Profile sync for dsh 0.2.0-rc.2**:
+5. **Profile sync for dsh 0.2.2-rc.1**:
    - Fills missing `contextWindow`, `input`, and `reasoningEfforts` on models already listed under the `llm-pi-ai` entry, using field-level `settings.mutate`.
-   - Does not write `maxTokens`. On 0.2.0-rc.2 that field becomes the model's per-request output default.
+   - Does not write `maxTokens`. A configured value becomes that model's per-request output default.
    - Leaves an omitted or empty `models` list alone, so the installed pi-ai catalog keeps serving.
    - Maps the host protocol `openai-completions` to the rule file's `openai-chat-completions` before matching OpenCode site rules.
-   - Uses only the thinking levels 0.2 accepts: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `thinkingFormat` follows the rule's request map: `openai` for `reasoning_effort`, `deepseek` for `enable_thinking`.
+   - Uses only the thinking levels 0.2.2 accepts: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `thinkingFormat` follows the rule's request map: `openai` for `reasoning_effort`, `qwen` for a top-level `enable_thinking`, `zai` for `thinking.type`, `deepseek` when `thinking.type` is combined with `enable_thinking`, and `openrouter` for a nested `reasoning.effort`.
    - Leaves fields that already have a value, including ones you set and ones that came from the catalog.
 
 6. **OpenCode request headers**:
@@ -70,9 +70,9 @@ dsh-plugin-smart-config/
 │   ├── engine.ts              # Core 5-layer cascading matching and overlay engine
 │   ├── sync.ts                # Remote rule hot-sync manager with local caching
 │   ├── adapter.ts             # Programmatic request mapping; does not edit frozen dsh requests
-│   ├── profile-sync.ts        # Rule results as dsh 0.2.0-rc.2 llm-pi-ai field edits
+│   ├── profile-sync.ts        # Rule results as dsh 0.2.2 llm-pi-ai field edits
 │   └── rules/
-│       └── builtin-rules.json # Built-in rule database (Revision 30 from ZCode)
+│       └── builtin-rules.json # Built-in rule database (ZCode 3.17.2, Revision 43)
 └── test/
     ├── test.ts                # Automated test suite
     └── demo.ts                # Interactive CLI demo script
@@ -103,9 +103,9 @@ npm run demo
 npm run demo -- glm-5.3-flash openai-chat-completions https://opencode.ai/zen/go/v1
 ```
 
-### 3. Install into DeepSeek Harness 0.2.0-rc.2
+### 3. Install into DeepSeek Harness 0.2.2-rc.1
 
-The package peers `@deepseek-ai/dsh` at `>=0.2.0-rc.2 <0.2.1-0`. That passes the installer on `0.2.0-rc.2` and does not treat `0.2.1-alpha` as the same line.
+The package peers `@deepseek-ai/dsh` at `>=0.2.0-rc.2 <0.2.3-0`. The installer includes prereleases, so `0.2.0-rc.2`, `0.2.1-rc.5`, and `0.2.2-rc.1` pass. `0.2.0-rc.1` and `0.2.3` do not.
 
 ```bash
 dsh plugin --profile web add dsh-plugin-smart-config

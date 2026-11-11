@@ -34,15 +34,15 @@
    - **深度思考与推理参数转译**：根据模型规格，自动将通用的 `reasoning_effort` 映射为对应的请求体结构（如 Claude 的 `thinking.type` + `output_config.effort`、DeepSeek 的 `enable_thinking`、OpenAI 的 `reasoning_effort` 等）。
 
 4. **离线高可用 + 云端热更新同步 (Remote Synchronizer)**：
-   - 内置完整 Revision 30 本地离线规则库（涵盖 20+ 模板、84+ 模型规则、72+ 协议规则、52+ 站点规则）；
+   - 内置 ZCode 3.17.2 的 Revision 43 本地离线规则库（34 个供应商模板、83 条模型规则、73 条协议规则、58 条站点规则）；
    - 支持后台轮询服务端配置接口，通过租约机制无感拉取最新规则。
 
-5. **按 dsh 0.2.0-rc.2 写回模型档案**：
+5. **按 dsh 0.2.2-rc.1 写回模型档案**：
    - 只补 `llm-pi-ai` 里已经列出的模型，用字段级 `settings.mutate` 填上还没有的 `contextWindow`、`input` 和 `reasoningEfforts`。
-   - 不写 `maxTokens`。在 0.2.0-rc.2 里，这个字段会变成该模型每次请求的默认输出上限。
+   - 不写 `maxTokens`。写上之后，这个字段会变成该模型每次请求的默认输出上限。
    - `models` 省略或为空时保持不动，继续用安装包里的 pi-ai 模型目录，不再塞入一份写死的模型列表。
    - 宿主上的 `openai-completions` 会先映射成规则库里的 `openai-chat-completions`，OpenCode 站点规则才能对上。
-   - 思考档位只用 0.2 接受的 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。`thinkingFormat` 跟着规则的请求映射走：`reasoning_effort` 写成 `openai`，`enable_thinking` 写成 `deepseek`。
+   - 思考档位只用 0.2.2 接受的 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`。`thinkingFormat` 跟着规则的请求映射走：`reasoning_effort` 写成 `openai`，顶层 `enable_thinking` 写成 `qwen`，`thinking.type` 写成 `zai`，`thinking.type` 加 `enable_thinking` 写成 `deepseek`，嵌套的 `reasoning.effort` 写成 `openrouter`。
    - 已经有值的字段保持原样，包括你改过的和目录里自带的。
 
 6. **OpenCode 请求头**：
@@ -64,9 +64,9 @@ dsh-plugin-smart-config/
 │   ├── engine.ts              # 逆向提取的核心 5 层级联算法与 Overlay 合并器
 │   ├── sync.ts                # 远端规则热更新同步器 (带本地缓存与并发控制)
 │   ├── adapter.ts             # 编程式请求参数转译（不改 dsh 运行中的冻结请求）
-│   ├── profile-sync.ts        # 把规则映射成 dsh 0.2.0-rc.2 的 llm-pi-ai 字段补丁
+│   ├── profile-sync.ts        # 把规则映射成 dsh 0.2.2 的 llm-pi-ai 字段补丁
 │   └── rules/
-│       └── builtin-rules.json # 完整的出厂内置规则库 (从 ZCode 逆向提取)
+│       └── builtin-rules.json # 出厂内置规则库 (ZCode 3.17.2, Revision 43)
 └── test/
     ├── test.ts                # 完整自动化测试套件
     └── demo.ts                # 交互式命令行验证脚本
@@ -97,9 +97,9 @@ npm run demo
 npm run demo -- glm-5.3-flash openai-chat-completions https://opencode.ai/zen/go/v1
 ```
 
-### 3. 装进 DeepSeek Harness 0.2.0-rc.2
+### 3. 装进 DeepSeek Harness 0.2.2-rc.1
 
-插件声明 `peerDependencies["@deepseek-ai/dsh"] = ">=0.2.0-rc.2 <0.2.1-0"`。`0.2.0-rc.2` 可以通过安装检查，`0.2.1-alpha` 不会被当成同一条线。
+插件声明 `peerDependencies["@deepseek-ai/dsh"] = ">=0.2.0-rc.2 <0.2.3-0"`。安装检查打开了 prerelease，所以 `0.2.0-rc.2`、`0.2.1-rc.5` 和 `0.2.2-rc.1` 都能通过，`0.2.0-rc.1` 和 `0.2.3` 不会。
 
 ```bash
 dsh plugin --profile web add dsh-plugin-smart-config

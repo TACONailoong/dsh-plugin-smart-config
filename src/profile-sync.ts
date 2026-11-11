@@ -1,12 +1,12 @@
 /**
- * Map smart-config rules onto a dsh 0.2.0-rc.2 `llm-pi-ai` profile.
+ * Map smart-config rules onto a dsh 0.2 `llm-pi-ai` profile.
  *
- * Agent-loop requests on `llm/stream` are frozen, so this plugin does not
- * rewrite them. Capabilities land on the provider profile, which the pi-ai
- * adapter reads before it builds a request.
+ * Checked against dsh 0.2.2-rc.1. Agent-loop requests on `llm/stream` are
+ * frozen, so this plugin does not rewrite them. Capabilities land on the
+ * provider profile, which the pi-ai adapter reads before it builds a request.
  *
- * `maxTokens` is intentionally left alone: on 0.2.0-rc.2 a configured value
- * becomes that model's per-request output default, not just a capability.
+ * `maxTokens` is intentionally left alone: a configured value becomes that
+ * model's per-request output default, not just a capability.
  */
 
 import type { ModelConfigEngine } from './engine.js';
@@ -14,8 +14,28 @@ import type { ModelConfigEngine } from './engine.js';
 /** Profile entry id of `@deepseek-ai/dsh-llm-pi-ai` in the base bundle. */
 export const LLM_PI_AI_ENTRY_ID = 'llm-pi-ai';
 
-/** Thinking levels a 0.2.0-rc.2 profile may declare, in escalation order. */
+/** Thinking levels a dsh 0.2.2 profile may declare, in escalation order. */
 export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+/**
+ * `thinkingFormat` values `openai-completions` accepts on dsh 0.2.2-rc.1.
+ * pi-ai rejects any other spelling.
+ */
+export const THINKING_FORMATS = [
+  'openai',
+  'deepseek',
+  'openrouter',
+  'together',
+  'baseten',
+  'zai',
+  'qwen',
+  'chat-template',
+  'qwen-chat-template',
+  'string-thinking',
+  'ant-ling',
+] as const;
+
+export type ThinkingFormat = (typeof THINKING_FORMATS)[number];
 
 const REAL_EFFORTS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -30,7 +50,7 @@ export interface SettingsPathOp {
 
 export interface WireCompat {
   supportsReasoningEffort?: boolean;
-  thinkingFormat?: 'openai' | 'deepseek';
+  thinkingFormat?: ThinkingFormat;
   requiresReasoningContentOnAssistantMessages?: boolean;
 }
 
@@ -49,19 +69,54 @@ export function ruleApiType(api: string | undefined): string | undefined {
   return api;
 }
 
-/** Compat fields implied by a rule's request-body map. Unknown maps are skipped. */
+function hasJsonKey(map: string, key: string): boolean {
+  return new RegExp(`["']${key}["']\\s*:`).test(map);
+}
+
+/**
+ * Compat fields implied by a ZCode request-body map, using the formats
+ * pi-ai dispatches on dsh 0.2.2.
+ *
+ * Anthropic `output_config` / adaptive thinking stays unset: that protocol
+ * has no `thinkingFormat`. An empty map is also unset, so a later fallback
+ * can still apply the OpenAI spelling when the model is already known to reason.
+ */
 export function wireCompat(map: string | undefined): WireCompat | undefined {
   if (!map) return undefined;
   const trimmed = map.trim();
   if (trimmed === '' || trimmed === '{}') return undefined;
-  if (trimmed.includes('enable_thinking')) {
+
+  const hasReasoningEffort = trimmed.includes('reasoning_effort');
+  const hasEnableThinking = trimmed.includes('enable_thinking');
+  const hasOutputConfig = trimmed.includes('output_config');
+  const hasThinkingKey = hasJsonKey(trimmed, 'thinking');
+  const hasNestedReasoning = hasJsonKey(trimmed, 'reasoning');
+
+  if (hasOutputConfig) return undefined;
+
+  if (hasNestedReasoning && !hasReasoningEffort && !hasEnableThinking && !hasThinkingKey) {
+    return { thinkingFormat: 'openrouter' };
+  }
+  if (hasEnableThinking && hasThinkingKey) {
     return {
-      supportsReasoningEffort: true,
+      supportsReasoningEffort: hasReasoningEffort,
       thinkingFormat: 'deepseek',
       requiresReasoningContentOnAssistantMessages: true,
     };
   }
-  if (trimmed.includes('reasoning_effort') && !trimmed.includes('output_config') && !trimmed.includes('thinking')) {
+  if (hasEnableThinking) {
+    return {
+      supportsReasoningEffort: hasReasoningEffort,
+      thinkingFormat: 'qwen',
+    };
+  }
+  if (hasThinkingKey) {
+    return {
+      supportsReasoningEffort: hasReasoningEffort,
+      thinkingFormat: 'zai',
+    };
+  }
+  if (hasReasoningEffort) {
     return {
       supportsReasoningEffort: true,
       thinkingFormat: 'openai',
@@ -155,8 +210,11 @@ export function planLlmPiAiOps(engine: ModelConfigEngine, providers: Record<stri
       const efforts = record.reasoningEfforts == null
         ? reasoningEffortsFor(modelId, specs.reasoningLevel?.values)
         : undefined;
+      const mapped = wireCompat(specs.reasoningLevel?.map);
       const compatAdd = completions
-        ? wireCompat(specs.reasoningLevel?.map) ?? (efforts ? { supportsReasoningEffort: true, thinkingFormat: 'openai' as const } : undefined)
+        ? mapped ?? (!specs.reasoningLevel?.map && efforts
+          ? { supportsReasoningEffort: true, thinkingFormat: 'openai' as const }
+          : undefined)
         : undefined;
 
       const patch: Record<string, unknown> = {};
